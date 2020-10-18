@@ -769,21 +769,7 @@ if ENV:
     UPSTREAM_REPO_URL = os.environ.get("UPSTREAM_REPO_URL", "https://github.com/MissAlexaRobot/MissAlexaRobot.git")
     TEMPORARY_DATA = os.environ.get("TEMPORARY_DATA", None)
     SPAMMERS = list(SPAMMERS)
-    try:
-        from alexa.antispam import (antispam_cek_user, antispam_restrict_user,
-                                    detect_user)
-
-        antispam_module = True
-    except ModuleNotFoundError:
-        antispam_module = False
-
-    def spamfilters(_text, user_id, _chat_id):
-        if int(user_id) in SPAMMERS:
-            print("This user is a spammer!")
-            return True
-        else:
-            return False
-
+    
     # Bot Logs setup:
     CONSOLE_LOGGER_VERBOSE = os.environ.get("CONSOLE_LOGGER_VERBOSE", "True")
 
@@ -827,5 +813,38 @@ if ENV:
     except PhoneNumberInvalidError:
         print(INVALID_PH)
         exit(1)
+    try:
+     from alexa.antispam import antispam_restrict_user, antispam_cek_user, detect_user
+     LOGGER.info("Note: AntiSpam loaded!")
+     antispam_module = True
+    except ModuleNotFoundError:
+     antispam_module = False
+
+
+    def spamcheck(func):
+     @wraps(func)
+     def check_user(update, context, *args, **kwargs):
+          chat = update.effective_chat
+          user = update.effective_user
+          message = update.effective_message
+          # If not user, return function
+          if not user:
+               return func(update, context, *args, **kwargs)
+          # If msg from self, return True
+          if user and user.id == context.bot.id:
+               return False
+          if antispam_module:
+               parsing_date = time.mktime(message.date.timetuple())
+               detecting = detect_user(user.id, chat.id, message, parsing_date)
+               if detecting:
+                    return False
+               antispam_restrict_user(user.id, parsing_date)
+          if int(user.id) in SPAMMERS:
+               return False
+
+          return func(update, context, *args, **kwargs)
+
+     return check_user
+
 else:
     quit(1)
